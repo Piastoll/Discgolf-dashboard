@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Disc Golf Tournament</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0e1411; --panel:#15201b; --panel2:#1b2a23; --line:#2a3d33;
+    --ink:#eaf3ee; --mut:#8fa89a; --acc:#5bd6a0; --acc2:#f2b53b;
+    --birdie:#4a90d9; --eagle:#7e6bd4; --ace:#e8c14a; --par:#6f8a7c;
+    --bogey:#e0915a; --dbogey:#c8643c; --triple:#9c3f24;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Bricolage Grotesque',sans-serif;
+    background-image:radial-gradient(circle at 15% 0%,rgba(91,214,160,.07),transparent 40%),radial-gradient(circle at 85% 10%,rgba(242,181,59,.06),transparent 45%);
+    min-height:100vh;padding:18px 14px 60px}
+  .wrap{max-width:1000px;margin:0 auto}
+  header{margin-bottom:22px}
+  h1{font-size:clamp(28px,7vw,46px);font-weight:800;letter-spacing:-.02em;line-height:1}
+  h1 .disc{color:var(--acc)}
+  .sub{color:var(--mut);font-family:'Spline Sans Mono',monospace;font-size:13px;margin-top:6px}
+  .tabs{display:flex;gap:8px;margin:18px 0}
+  .tab{flex:1;padding:11px;border:1px solid var(--line);background:var(--panel);color:var(--mut);
+    border-radius:12px;font-weight:600;font-size:14px;cursor:pointer;text-align:center;transition:.18s}
+  .tab.on{background:var(--acc);color:#06120c;border-color:var(--acc)}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:16px}
+  .card h2{font-size:17px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .card h2 .dot{width:8px;height:8px;border-radius:50%;background:var(--acc)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:9px 8px;text-align:center}
+  th{color:var(--mut);font-family:'Spline Sans Mono',monospace;font-size:11px;text-transform:uppercase;
+    letter-spacing:.05em;border-bottom:1px solid var(--line)}
+  td{border-bottom:1px solid rgba(42,61,51,.5)}
+  tbody tr:last-child td{border-bottom:none}
+  td.name{text-align:left;font-weight:600}
+  td.pts{font-weight:800;color:var(--acc)}
+  .rk{display:inline-flex;width:22px;height:22px;align-items:center;justify-content:center;
+    border-radius:6px;font-size:12px;font-weight:700;background:var(--panel2)}
+  tr:nth-child(1) .rk{background:var(--acc2);color:#1a1200}
+  tr:nth-child(2) .rk{background:#c0ccc6;color:#10201a}
+  tr:nth-child(3) .rk{background:#c8884f;color:#1a0e00}
+  .mono{font-family:'Spline Sans Mono',monospace}
+  .neg{color:var(--acc)} .pos{color:var(--bogey)}
+  .pie-controls{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+  .chip{padding:7px 13px;border:1px solid var(--line);background:var(--panel2);color:var(--mut);
+    border-radius:20px;font-size:13px;cursor:pointer;font-weight:500;transition:.15s}
+  .chip.on{background:var(--ink);color:#0e1411;border-color:var(--ink)}
+  .pies{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+  .pie-box{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .pie-box h3{text-align:center;font-size:14px;margin-bottom:4px}
+  .pie-box .cnt{text-align:center;color:var(--mut);font-size:11px;font-family:'Spline Sans Mono',monospace;margin-bottom:8px}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 12px;justify-content:center;margin-top:20px;font-size:12px}
+  .legend span{display:flex;align-items:center;gap:5px;color:var(--mut)}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .status{text-align:center;color:var(--mut);padding:40px 0;font-family:'Spline Sans Mono',monospace;font-size:13px}
+  .err{color:var(--bogey);max-width:560px;margin:0 auto;line-height:1.6}
+  .foot{text-align:center;color:var(--mut);font-size:11px;font-family:'Spline Sans Mono',monospace;margin-top:24px;opacity:.7}
+  .refresh{background:none;border:1px solid var(--line);color:var(--mut);border-radius:8px;padding:6px 12px;
+    font-size:12px;cursor:pointer;font-family:'Spline Sans Mono',monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="disc">●</span> Disc Golf Tournament</h1>
+    <div class="sub" id="updated">loading live data…</div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab on" data-t="A" onclick="setTab('A')">Tournament A · 7p</div>
+    <div class="tab" data-t="B" onclick="setTab('B')">Tournament B · 8p</div>
+  </div>
+
+  <div id="content"><div class="status">Loading…</div></div>
+
+  <div class="foot">
+    GitHub Pages · <button class="refresh" onclick="loadData()">↻ refresh</button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   DATA SOURCE — reads data.csv sitting next to this file in
+   the GitHub repo. After each round, replace data.csv with the
+   new one and the site updates automatically.
+   ============================================================ */
+const CSV_URL = "data.csv";
+
+/* Ranking points (mirror of your Settings tab). Ties averaged. */
+const POINTS = [25,20,18,16,14,12,10,8];
+
+const SCORE_TYPES = [
+  {key:"ace",   label:"Ace",        color:"#e8c14a", rel:v=>v<=-3 && false}, // ace handled separately
+  {key:"eagle", label:"Eagle (-2)", color:"#7e6bd4"},
+  {key:"birdie",label:"Birdie (-1)",color:"#4a90d9"},
+  {key:"par",   label:"Par",        color:"#6f8a7c"},
+  {key:"bogey", label:"Bogey (+1)", color:"#e0915a"},
+  {key:"dbogey",label:"Double (+2)",color:"#c8643c"},
+  {key:"triple",label:"Triple+ (≥+3)",color:"#9c3f24"},
+];
+
+let RAW=[], TAB="A", pieFilter="ALL", charts={};
+
+function setTab(t){
+  TAB=t; pieFilter="ALL";
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
+  render();
+}
+
+async function loadData(){
+  document.getElementById("content").innerHTML='<div class="status">Loading…</div>';
+  try{
+    const res=await fetch(CSV_URL+"?_cb="+Date.now());
+    if(!res.ok) throw new Error("data.csv not found ("+res.status+")");
+    const text=await res.text();
+    RAW=parseCSV(text);
+    const now=new Date();
+    document.getElementById("updated").textContent="updated "+now.toLocaleString();
+    render();
+  }catch(e){
+    document.getElementById("content").innerHTML=
+      '<div class="status err">Could not load data: '+e.message+
+      '<br><br>Make sure <b>data.csv</b> sits in the same folder as index.html in your repo.</div>';
+  }
+}
+
+function parseCSV(text){
+  const lines=text.trim().split(/\r?\n/);
+  const head=lines[0].split(",").map(s=>s.trim());
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const cells=splitCSVLine(lines[i]);
+    if(cells.length<4) continue;
+    const o={};
+    head.forEach((h,j)=>o[h]=(cells[j]||"").trim());
+    // require a valid total to count the row
+    if(o.Total==="" || isNaN(+o.Total)) continue;
+    o.holes=[];
+    for(let h=1;h<=18;h++) o.holes.push(+o["H"+h]);
+    o.Round=+o.Round; o.Total=+o.Total;
+    o.vsPar=o.vsPar===""?null:+o.vsPar;
+    o.Rating=o.Rating===""?null:+o.Rating;
+    rows.push(o);
+  }
+  return rows;
+}
+function splitCSVLine(line){
+  const out=[];let cur="",q=false;
+  for(let i=0;i<line.length;i++){const c=line[i];
+    if(c==='"'){q=!q;} else if(c===','&&!q){out.push(cur);cur="";} else cur+=c;}
+  out.push(cur);return out;
+}
+
+/* derive course pars per (tournament,round) from the data row's hole pars?
+   The Data tab carries each round's Par total, but we need per-hole par for
+   birdie/bogey typing. We reconstruct per-hole par from any row of that round:
+   the workbook stores hole scores only, not per-hole par, in Data — so we infer
+   score-type from vs-hole-par using a parallel "par row" we also publish.
+   To keep it robust we read per-hole par from rows where Player=="__PAR__" if present,
+   else fall back to round Par/18 (approx). */
+function holeParFor(tournament,round){
+  // look for an explicit par row
+  const parRow=RAW.find(r=>r.Tournament===tournament&&r.Round===round&&r.Player==="__PAR__");
+  if(parRow) return parRow.holes;
+  return null;
+}
+
+function classify(score,par){
+  if(score<=0||!par) return null;
+  if(score===1) return "ace";
+  const d=score-par;
+  if(d<=-2) return "eagle";
+  if(d===-1) return "birdie";
+  if(d===0) return "par";
+  if(d===1) return "bogey";
+  if(d===2) return "dbogey";
+  return "triple";
+}
+
+function render(){
+  const rows=RAW.filter(r=>r.Tournament===TAB && r.Player!=="__PAR__");
+  const players=[...new Set(rows.map(r=>r.Player))];
+  if(rows.length===0){
+    document.getElementById("content").innerHTML=
+      '<div class="status">No rounds entered yet for Tournament '+TAB+'.</div>';
+    return;
+  }
+  // ---- standings ----
+  const rounds=[...new Set(rows.map(r=>r.Round))];
+  const agg={};
+  players.forEach(p=>agg[p]={pts:0,total:0,vs:0,rating:[],rounds:0});
+  rounds.forEach(rd=>{
+    const rrows=rows.filter(r=>r.Round===rd).sort((a,b)=>a.Total-b.Total);
+    // averaged points by place
+    let i=0;
+    while(i<rrows.length){
+      let j=i; while(j+1<rrows.length && rrows[j+1].Total===rrows[i].Total) j++;
+      const placePts=[];
+      for(let k=i;k<=j;k++) placePts.push(POINTS[k]??0);
+      const avg=placePts.reduce((a,b)=>a+b,0)/placePts.length;
+      for(let k=i;k<=j;k++) agg[rrows[k].Player].pts+=avg;
+      i=j+1;
+    }
+    rrows.forEach(r=>{
+      const a=agg[r.Player];
+      a.total+=r.Total; a.vs+=(r.vsPar??0); a.rounds++;
+      if(r.Rating) a.rating.push(r.Rating);
+    });
+  });
+  const standings=players.map(p=>({
+    name:p,...agg[p],
+    avgRating: agg[p].rating.length? Math.round(agg[p].rating.reduce((a,b)=>a+b,0)/agg[p].rating.length):null
+  })).sort((a,b)=>b.pts-a.pts);
+
+  let html=`<div class="card"><h2><span class="dot"></span>Standings — Tournament ${TAB}</h2>
+    <table><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Pts</th>
+    <th>Σ vs Par</th><th>Avg Rating</th><th>Rounds</th></tr></thead><tbody>`;
+  standings.forEach((s,i)=>{
+    const vs=s.vs>0?`<span class="pos">+${s.vs}</span>`:s.vs<0?`<span class="neg">${s.vs}</span>`:"E";
+    html+=`<tr><td><span class="rk">${i+1}</span></td>
+      <td class="name">${s.name}</td>
+      <td class="pts">${s.pts%1?s.pts.toFixed(1):s.pts}</td>
+      <td class="mono">${vs}</td>
+      <td class="mono">${s.avgRating??"—"}</td>
+      <td class="mono">${s.rounds}</td></tr>`;
+  });
+  html+=`</tbody></table></div>`;
+
+  // ---- pie section ----
+  html+=`<div class="card"><h2><span class="dot"></span>Score Distribution by Par</h2>
+    <div class="pie-controls" id="pieCtrl"></div>
+    <div class="pies">
+      <div class="pie-box"><h3>Par 3 holes</h3><div class="cnt" id="cnt3"></div><canvas id="pie3"></canvas></div>
+      <div class="pie-box"><h3>Par 4 holes</h3><div class="cnt" id="cnt4"></div><canvas id="pie4"></canvas></div>
+      <div class="pie-box"><h3>Par 5 holes</h3><div class="cnt" id="cnt5"></div><canvas id="pie5"></canvas></div>
+    </div>
+    <div class="legend" id="legend"></div></div>`;
+
+  document.getElementById("content").innerHTML=html;
+
+  // build filter chips
+  const ctrl=document.getElementById("pieCtrl");
+  const mk=(val,lbl)=>{const c=document.createElement("div");c.className="chip"+(pieFilter===val?" on":"");
+    c.textContent=lbl;c.onclick=()=>{pieFilter=val;render();};ctrl.appendChild(c);};
+  mk("ALL","All players");
+  players.forEach(p=>mk(p,p));
+
+  // legend
+  const lg=document.getElementById("legend");
+  [["ace","Ace"],["eagle","Eagle"],["birdie","Birdie"],["par","Par"],
+   ["bogey","Bogey"],["dbogey","Double"],["triple","Triple+"]].forEach(([k,l])=>{
+    const colors={ace:"#e8c14a",eagle:"#7e6bd4",birdie:"#4a90d9",par:"#6f8a7c",
+      bogey:"#e0915a",dbogey:"#c8643c",triple:"#9c3f24"};
+    const s=document.createElement("span");
+    s.innerHTML=`<i style="background:${colors[k]}"></i>${l}`;lg.appendChild(s);
+  });
+
+  buildPies(rows,players);
+}
+
+function buildPies(rows,players){
+  const target = pieFilter==="ALL"? rows : rows.filter(r=>r.Player===pieFilter);
+  const buckets={3:blank(),4:blank(),5:blank()};
+  function blank(){return {ace:0,eagle:0,birdie:0,par:0,bogey:0,dbogey:0,triple:0};}
+
+  target.forEach(r=>{
+    const par=holeParFor(r.Tournament,r.Round);
+    if(!par) return;
+    r.holes.forEach((sc,h)=>{
+      const p=par[h]; if(!p||sc<=0) return;
+      if(p<3||p>5) return;
+      const t=classify(sc,p); if(t) buckets[p][t]++;
+    });
+  });
+
+  [["3","pie3","cnt3"],["4","pie4","cnt4"],["5","pie5","cnt5"]].forEach(([par,cv,cntId])=>{
+    const b=buckets[par];
+    const total=Object.values(b).reduce((a,c)=>a+c,0);
+    document.getElementById(cntId).textContent=total+" holes played";
+    const order=["ace","eagle","birdie","par","bogey","dbogey","triple"];
+    const colors={ace:"#e8c14a",eagle:"#7e6bd4",birdie:"#4a90d9",par:"#6f8a7c",
+      bogey:"#e0915a",dbogey:"#c8643c",triple:"#9c3f24"};
+    const data=order.map(k=>b[k]), bg=order.map(k=>colors[k]);
+    if(charts[cv]) charts[cv].destroy();
+    const ctx=document.getElementById(cv);
+    if(total===0){ctx.parentElement.querySelector(".cnt").textContent="no par-"+par+" holes yet";return;}
+    charts[cv]=new Chart(ctx,{type:"doughnut",
+      data:{labels:order.map(k=>k),datasets:[{data,backgroundColor:bg,borderColor:"#15201b",borderWidth:2}]},
+      options:{plugins:{legend:{display:false},
+        tooltip:{callbacks:{label:c=>{const v=c.raw,pct=total?Math.round(v/total*100):0;
+          return ` ${c.label}: ${v} (${pct}%)`;}}}},
+        cutout:"58%",animation:{animateRotate:true,duration:500}}});
+  });
+}
+
+loadData();
+</script>
+</body>
+</html>
