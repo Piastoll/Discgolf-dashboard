@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
   :root{
     --bg:#0e1411; --panel:#15201b; --panel2:#1b2a23; --line:#2a3d33;
@@ -47,6 +48,13 @@
   .mono{font-family:'Spline Sans Mono',monospace}
   .neg{color:var(--acc)} .pos{color:var(--bogey)}
   .pie-controls{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+  .secnav{display:flex;gap:6px;margin:0 0 16px;background:var(--panel);border:1px solid var(--line);
+    border-radius:12px;padding:5px}
+  .secnav button{flex:1;padding:9px 6px;border:none;background:transparent;color:var(--mut);
+    border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;transition:.15s}
+  .secnav button.on{background:var(--acc);color:#06120c}
+  .trend-wrap{position:relative;height:300px;margin-top:6px}
+  .trend-note{color:var(--mut);font-size:12px;margin-bottom:10px;font-family:'Spline Sans Mono',monospace}
   .chip{padding:7px 13px;border:1px solid var(--line);background:var(--panel2);color:var(--mut);
     border-radius:20px;font-size:13px;cursor:pointer;font-weight:500;transition:.15s}
   .chip.on{background:var(--ink);color:#0e1411;border-color:var(--ink)}
@@ -104,10 +112,12 @@ const SCORE_TYPES = [
   {key:"triple",label:"Triple+ (≥+3)",color:"#9c3f24"},
 ];
 
-let RAW=[], TAB="A", pieFilter="ALL", charts={};
+let RAW=[], TAB="A", SEC="standings", pieFilter="ALL", charts={};
+
+function setSec(s){ SEC=s; render(); }
 
 function setTab(t){
-  TAB=t; pieFilter="ALL";
+  TAB=t; pieFilter="ALL"; SEC="standings";
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
   render();
 }
@@ -182,21 +192,12 @@ function classify(score,par){
   return "triple";
 }
 
-function render(){
-  const rows=RAW.filter(r=>r.Tournament===TAB && r.Player!=="__PAR__");
-  const players=[...new Set(rows.map(r=>r.Player))];
-  if(rows.length===0){
-    document.getElementById("content").innerHTML=
-      '<div class="status">No rounds entered yet for Tournament '+TAB+'.</div>';
-    return;
-  }
-  // ---- standings ----
-  const rounds=[...new Set(rows.map(r=>r.Round))];
+function computeStandings(rows,players){
+  const rounds=[...new Set(rows.map(r=>r.Round))].sort((a,b)=>a-b);
   const agg={};
   players.forEach(p=>agg[p]={pts:0,total:0,vs:0,rating:[],rounds:0});
   rounds.forEach(rd=>{
     const rrows=rows.filter(r=>r.Round===rd).sort((a,b)=>a.Total-b.Total);
-    // averaged points by place
     let i=0;
     while(i<rrows.length){
       let j=i; while(j+1<rrows.length && rrows[j+1].Total===rrows[i].Total) j++;
@@ -212,11 +213,40 @@ function render(){
       if(r.Rating) a.rating.push(r.Rating);
     });
   });
-  const standings=players.map(p=>({
+  return players.map(p=>({
     name:p,...agg[p],
     avgRating: agg[p].rating.length? Math.round(agg[p].rating.reduce((a,b)=>a+b,0)/agg[p].rating.length):null
   })).sort((a,b)=>b.pts-a.pts);
+}
 
+function render(){
+  const rows=RAW.filter(r=>r.Tournament===TAB && r.Player!=="__PAR__" && r.Total!=="" && !isNaN(+r.Total));
+  const players=[...new Set(rows.map(r=>r.Player))];
+  if(rows.length===0){
+    document.getElementById("content").innerHTML=
+      '<div class="status">No rounds entered yet for Tournament '+TAB+'.</div>';
+    return;
+  }
+
+  // section nav
+  let html=`<div class="secnav">
+     <button class="${SEC==='standings'?'on':''}" onclick="setSec('standings')">Standings</button>
+     <button class="${SEC==='dist'?'on':''}" onclick="setSec('dist')">Distribution</button>
+     <button class="${SEC==='trends'?'on':''}" onclick="setSec('trends')">Trends</button>
+   </div>`;
+
+  if(SEC==='standings') html+=sectionStandings(rows,players);
+  else if(SEC==='dist')  html+=sectionDist(players);
+  else                   html+=sectionTrends();
+
+  document.getElementById("content").innerHTML=html;
+
+  if(SEC==='dist')   afterDist(rows,players);
+  if(SEC==='trends') afterTrends(rows,players);
+}
+
+function sectionStandings(rows,players){
+  const standings=computeStandings(rows,players);
   let html=`<div class="card"><h2><span class="dot"></span>Standings — Tournament ${TAB}</h2>
     <table><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Pts</th>
     <th>Σ vs Par</th><th>Avg Rating</th><th>Rounds</th></tr></thead><tbody>`;
@@ -230,9 +260,11 @@ function render(){
       <td class="mono">${s.rounds}</td></tr>`;
   });
   html+=`</tbody></table></div>`;
+  return html;
+}
 
-  // ---- pie section ----
-  html+=`<div class="card"><h2><span class="dot"></span>Score Distribution by Par</h2>
+function sectionDist(players){
+  return `<div class="card"><h2><span class="dot"></span>Score Distribution by Par</h2>
     <div class="pie-controls" id="pieCtrl"></div>
     <div class="pies">
       <div class="pie-box"><h3>Par 3 holes</h3><div class="cnt" id="cnt3"></div><canvas id="pie3"></canvas></div>
@@ -240,26 +272,33 @@ function render(){
       <div class="pie-box"><h3>Par 5 holes</h3><div class="cnt" id="cnt5"></div><canvas id="pie5"></canvas></div>
     </div>
     <div class="legend" id="legend"></div></div>`;
+}
 
-  document.getElementById("content").innerHTML=html;
+function sectionTrends(){
+  return `<div class="card"><h2><span class="dot"></span>Cumulative Points Race</h2>
+      <div class="trend-note">Total ranking points after each round — who's pulling ahead.</div>
+      <div class="trend-wrap"><canvas id="ptsRace"></canvas></div></div>
+    <div class="card"><h2><span class="dot"></span>Round Rating Trend</h2>
+      <div class="trend-note">Metrix round rating per round (difficulty-adjusted). Higher = better.</div>
+      <div class="trend-wrap"><canvas id="ratingTrend"></canvas></div></div>`;
+}
 
-  // build filter chips
+const TYPE_COLORS={ace:"#e8c14a",eagle:"#7e6bd4",birdie:"#4a90d9",par:"#6f8a7c",
+  bogey:"#e0915a",dbogey:"#c8643c",triple:"#9c3f24"};
+
+function afterDist(rows,players){
   const ctrl=document.getElementById("pieCtrl");
   const mk=(val,lbl)=>{const c=document.createElement("div");c.className="chip"+(pieFilter===val?" on":"");
     c.textContent=lbl;c.onclick=()=>{pieFilter=val;render();};ctrl.appendChild(c);};
   mk("ALL","All players");
   players.forEach(p=>mk(p,p));
 
-  // legend
   const lg=document.getElementById("legend");
   [["ace","Ace"],["eagle","Eagle"],["birdie","Birdie"],["par","Par"],
    ["bogey","Bogey"],["dbogey","Double"],["triple","Triple+"]].forEach(([k,l])=>{
-    const colors={ace:"#e8c14a",eagle:"#7e6bd4",birdie:"#4a90d9",par:"#6f8a7c",
-      bogey:"#e0915a",dbogey:"#c8643c",triple:"#9c3f24"};
     const s=document.createElement("span");
-    s.innerHTML=`<i style="background:${colors[k]}"></i>${l}`;lg.appendChild(s);
+    s.innerHTML=`<i style="background:${TYPE_COLORS[k]}"></i>${l}`;lg.appendChild(s);
   });
-
   buildPies(rows,players);
 }
 
@@ -267,7 +306,6 @@ function buildPies(rows,players){
   const target = pieFilter==="ALL"? rows : rows.filter(r=>r.Player===pieFilter);
   const buckets={3:blank(),4:blank(),5:blank()};
   function blank(){return {ace:0,eagle:0,birdie:0,par:0,bogey:0,dbogey:0,triple:0};}
-
   target.forEach(r=>{
     const par=holeParFor(r.Tournament,r.Round);
     if(!par) return;
@@ -283,19 +321,84 @@ function buildPies(rows,players){
     const total=Object.values(b).reduce((a,c)=>a+c,0);
     document.getElementById(cntId).textContent=total+" holes played";
     const order=["ace","eagle","birdie","par","bogey","dbogey","triple"];
-    const colors={ace:"#e8c14a",eagle:"#7e6bd4",birdie:"#4a90d9",par:"#6f8a7c",
-      bogey:"#e0915a",dbogey:"#c8643c",triple:"#9c3f24"};
-    const data=order.map(k=>b[k]), bg=order.map(k=>colors[k]);
+    const data=order.map(k=>b[k]), bg=order.map(k=>TYPE_COLORS[k]);
     if(charts[cv]) charts[cv].destroy();
     const ctx=document.getElementById(cv);
-    if(total===0){ctx.parentElement.querySelector(".cnt").textContent="no par-"+par+" holes yet";return;}
+    if(total===0){document.getElementById(cntId).textContent="no par-"+par+" holes yet";return;}
     charts[cv]=new Chart(ctx,{type:"doughnut",
-      data:{labels:order.map(k=>k),datasets:[{data,backgroundColor:bg,borderColor:"#15201b",borderWidth:2}]},
-      options:{plugins:{legend:{display:false},
+      plugins:[ChartDataLabels],
+      data:{labels:order,datasets:[{data,backgroundColor:bg,borderColor:"#15201b",borderWidth:2}]},
+      options:{plugins:{
+        legend:{display:false},
+        datalabels:{
+          color:"#0e1411",font:{weight:"700",size:11,family:"Spline Sans Mono"},
+          formatter:(v)=>{const pct=Math.round(v/total*100); return pct>=8? pct+"%":"";}
+        },
         tooltip:{callbacks:{label:c=>{const v=c.raw,pct=total?Math.round(v/total*100):0;
           return ` ${c.label}: ${v} (${pct}%)`;}}}},
-        cutout:"58%",animation:{animateRotate:true,duration:500}}});
+        cutout:"55%",animation:{animateRotate:true,duration:500}}});
   });
+}
+
+const PLAYER_PALETTE=["#5bd6a0","#f2b53b","#4a90d9","#e0915a","#7e6bd4","#e8c14a","#c8643c","#6fd0c4"];
+
+function afterTrends(rows,players){
+  const rounds=[...new Set(rows.map(r=>r.Round))].sort((a,b)=>a-b);
+  // standings order so colours/legend are consistent & meaningful
+  const ordered=computeStandings(rows,players).map(s=>s.name);
+
+  // cumulative points per player per round
+  const cumPts={}; ordered.forEach(p=>cumPts[p]=[]);
+  let running={}; ordered.forEach(p=>running[p]=0);
+  rounds.forEach(rd=>{
+    const rr=rows.filter(r=>r.Round===rd).sort((a,b)=>a.Total-b.Total);
+    let i=0;
+    while(i<rr.length){
+      let j=i; while(j+1<rr.length && rr[j+1].Total===rr[i].Total) j++;
+      const pl=[]; for(let k=i;k<=j;k++) pl.push(POINTS[k]??0);
+      const avg=pl.reduce((a,b)=>a+b,0)/pl.length;
+      for(let k=i;k<=j;k++) running[rr[k].Player]+=avg;
+      i=j+1;
+    }
+    ordered.forEach(p=>cumPts[p].push(running[p]));
+  });
+
+  // rating per player per round (null if didn't play)
+  const ratingByRound={}; ordered.forEach(p=>ratingByRound[p]=[]);
+  rounds.forEach(rd=>{
+    ordered.forEach(p=>{
+      const r=rows.find(x=>x.Round===rd && x.Player===p);
+      ratingByRound[p].push(r && r.Rating? r.Rating : null);
+    });
+  });
+
+  const labels=rounds.map(r=>"R"+r);
+  const common=(yTitle)=>({
+    responsive:true,maintainAspectRatio:false,
+    plugins:{datalabels:{display:false},
+      legend:{labels:{color:"#8fa89a",boxWidth:12,font:{size:11}}},
+      tooltip:{mode:"index",intersect:false}},
+    scales:{
+      x:{ticks:{color:"#8fa89a"},grid:{color:"rgba(42,61,51,.5)"}},
+      y:{title:{display:true,text:yTitle,color:"#8fa89a"},
+         ticks:{color:"#8fa89a"},grid:{color:"rgba(42,61,51,.5)"}}}
+  });
+
+  const mkDatasets=(srcObj)=>ordered.map((p,i)=>({
+    label:p,data:srcObj[p],
+    borderColor:PLAYER_PALETTE[i%PLAYER_PALETTE.length],
+    backgroundColor:PLAYER_PALETTE[i%PLAYER_PALETTE.length],
+    borderWidth:2,tension:.25,spanGaps:true,
+    pointRadius:3,pointHoverRadius:5
+  }));
+
+  if(charts.ptsRace) charts.ptsRace.destroy();
+  charts.ptsRace=new Chart(document.getElementById("ptsRace"),{
+    type:"line",data:{labels,datasets:mkDatasets(cumPts)},options:common("Cumulative points")});
+
+  if(charts.ratingTrend) charts.ratingTrend.destroy();
+  charts.ratingTrend=new Chart(document.getElementById("ratingTrend"),{
+    type:"line",data:{labels,datasets:mkDatasets(ratingByRound)},options:common("Round rating")});
 }
 
 loadData();
