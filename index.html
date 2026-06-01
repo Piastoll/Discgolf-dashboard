@@ -216,7 +216,7 @@ function computeStandings(rows,players){
   return players.map(p=>({
     name:p,...agg[p],
     avgRating: agg[p].rating.length? Math.round(agg[p].rating.reduce((a,b)=>a+b,0)/agg[p].rating.length):null
-  })).sort((a,b)=>b.pts-a.pts);
+  })).sort((a,b)=> b.pts-a.pts || a.total-b.total);
 }
 
 function render(){
@@ -251,8 +251,13 @@ function sectionStandings(rows,players){
     <table><thead><tr><th>#</th><th style="text-align:left">Player</th><th>Pts</th>
     <th>Σ vs Par</th><th>Avg Rating</th><th>Rounds</th></tr></thead><tbody>`;
   standings.forEach((s,i)=>{
+    // shared rank only when BOTH points and total score are equal (true tie)
+    let rank=i+1;
+    if(i>0 && standings[i-1].pts===s.pts && standings[i-1].total===s.total)
+      rank=standings[i-1]._rank;
+    s._rank=rank;
     const vs=s.vs>0?`<span class="pos">+${s.vs}</span>`:s.vs<0?`<span class="neg">${s.vs}</span>`:"E";
-    html+=`<tr><td><span class="rk">${i+1}</span></td>
+    html+=`<tr><td><span class="rk">${rank}</span></td>
       <td class="name">${s.name}</td>
       <td class="pts">${s.pts%1?s.pts.toFixed(1):s.pts}</td>
       <td class="mono">${vs}</td>
