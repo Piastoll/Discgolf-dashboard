@@ -112,12 +112,13 @@ const SCORE_TYPES = [
   {key:"triple",label:"Triple+ (≥+3)",color:"#9c3f24"},
 ];
 
-let RAW=[], TAB="A", SEC="standings", pieFilter="ALL", charts={};
+let RAW=[], TAB="A", SEC="standings", pieFilter="ALL", roundFilter=null, charts={};
 
 function setSec(s){ SEC=s; render(); }
+function setRound(r){ roundFilter=r; render(); }
 
 function setTab(t){
-  TAB=t; pieFilter="ALL"; SEC="standings";
+  TAB=t; pieFilter="ALL"; SEC="standings"; roundFilter=null;
   document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x.dataset.t===t));
   render();
 }
@@ -243,6 +244,7 @@ function render(){
 
   if(SEC==='dist')   afterDist(rows,players);
   if(SEC==='trends') afterTrends(rows,players);
+  if(SEC==='standings') fillRoundTable();
 }
 
 function sectionStandings(rows,players){
@@ -265,7 +267,68 @@ function sectionStandings(rows,players){
       <td class="mono">${s.rounds}</td></tr>`;
   });
   html+=`</tbody></table></div>`;
+
+  // ---- per-round breakdown ----
+  const rounds=[...new Set(rows.map(r=>r.Round))].sort((a,b)=>a-b);
+  let rf = roundFilter;
+  if(rf===null || !rounds.includes(rf)) rf = rounds[rounds.length-1]; // default latest
+
+  const courseName=(()=>{ const r=rows.find(x=>x.Round===rf); return r?r.Course:""; })();
+
+  html+=`<div class="card"><h2><span class="dot"></span>Round Breakdown</h2>
+    <div class="pie-controls" id="roundCtrl"></div>
+    <div class="trend-note">${courseName?("Course: "+courseName):""}</div>
+    <table><thead><tr><th>#</th><th style="text-align:left">Player</th>
+      <th>Score</th><th>vs Par</th><th>Rating</th><th>Pts</th></tr></thead><tbody id="roundBody"></tbody></table></div>`;
+
+  // stash for post-render fill
+  window._roundData={rows,rounds,rf};
   return html;
+}
+
+function fillRoundTable(){
+  const d=window._roundData; if(!d) return;
+  const {rows,rounds,rf}=d;
+  // chips
+  const ctrl=document.getElementById("roundCtrl");
+  if(ctrl){
+    rounds.forEach(rn=>{
+      const c=document.createElement("div");
+      c.className="chip"+(rn===rf?" on":"");
+      c.textContent="R"+rn;
+      c.onclick=()=>setRound(rn);
+      ctrl.appendChild(c);
+    });
+  }
+  // rows for this round, ranked by score, points by place (ties averaged)
+  const rr=rows.filter(r=>r.Round===rf).slice().sort((a,b)=>a.Total-b.Total);
+  const pts={};
+  let i=0;
+  while(i<rr.length){
+    let j=i; while(j+1<rr.length && rr[j+1].Total===rr[i].Total) j++;
+    const pl=[]; for(let k=i;k<=j;k++) pl.push(POINTS[k]??0);
+    const avg=pl.reduce((a,b)=>a+b,0)/pl.length;
+    for(let k=i;k<=j;k++) pts[rr[k].Player]=avg;
+    i=j+1;
+  }
+  const body=document.getElementById("roundBody");
+  if(!body) return;
+  let place=0, shown=0, prevScore=null;
+  rr.forEach((r,idx)=>{
+    shown++;
+    if(r.Total!==prevScore){ place=shown; prevScore=r.Total; }
+    const vsv=r.vsPar;
+    const vs=vsv>0?`<span class="pos">+${vsv}</span>`:vsv<0?`<span class="neg">${vsv}</span>`:"E";
+    const p=pts[r.Player];
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><span class="rk">${place}</span></td>
+      <td class="name">${r.Player}</td>
+      <td class="mono">${r.Total}</td>
+      <td class="mono">${vs}</td>
+      <td class="mono">${r.Rating||"—"}</td>
+      <td class="pts">${p%1?p.toFixed(1):p}</td>`;
+    body.appendChild(tr);
+  });
 }
 
 function sectionDist(players){
