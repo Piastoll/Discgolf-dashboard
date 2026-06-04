@@ -152,7 +152,7 @@ function parseCSV(text){
     // require a valid total to count the row
     if(o.Total==="" || isNaN(+o.Total)) continue;
     o.holes=[];
-    for(let h=1;h<=18;h++) o.holes.push(+o["H"+h]);
+    for(let h=1;h<=24;h++){ const v=o["H"+h]; o.holes.push(v===undefined||v===""?0:+v); }
     o.Round=+o.Round; o.Total=+o.Total;
     o.vsPar=o.vsPar===""?null:+o.vsPar;
     o.Rating=o.Rating===""?null:+o.Rating;
